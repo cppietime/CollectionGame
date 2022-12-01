@@ -1,0 +1,15 @@
+[
+  {
+    "id": "bulbasaur",
+    "name": "Bulbasaur",
+    "type1": "grass",
+    "type2": "poison",
+    "dex_no": 1,
+    "stats": [45, 49, 49, 65, 65, 45],
+    "ability1": "aroma_veil",
+    "egg_group1": "undiscovered",
+    "level_moves": [
+      [0, "scratch"]
+    ]
+  }
+]
