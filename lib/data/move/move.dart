@@ -11,14 +11,79 @@ enum MoveCategory { physical, special, status }
 enum TargetType {
   oneEnemy,
   oneAlly,
+  oneAdjacent,
+  one,
   self,
-  adjacentEnemies,
-  adjacentAllies,
-  allEnemies,
-  allAllies,
   enemySide,
   allySide,
-  all
+  adjacentEnemies,
+  adjacentAllies,
+  adjacentEnemy,
+  adjacentAlly,
+  allEnemies,
+  allAllies,
+  allAdjacent,
+  allOther,
+  all;
+
+  Iterable<MoveTarget> allPossibleTargets(int maxPerSide, int myPosition) {
+    switch (this) {
+      case TargetType.oneEnemy:
+        return List<MoveTarget>.generate(
+            maxPerSide, (i) => MoveTarget(false, i));
+      case TargetType.oneAlly:
+        return List<MoveTarget>.generate(maxPerSide, (i) => MoveTarget(true, i))
+            .where((t) => t.sideIndex != myPosition);
+      case TargetType.oneAdjacent:
+        final targets = [MoveTarget(false, myPosition)];
+        if (myPosition > 0) {
+          targets.addAll([
+            MoveTarget(false, myPosition - 1),
+            MoveTarget(true, myPosition - 1)
+          ]);
+        }
+        if (myPosition + 1 < maxPerSide) {
+          targets.addAll([
+            MoveTarget(false, myPosition + 1),
+            MoveTarget(true, myPosition + 1)
+          ]);
+        }
+        return targets;
+      case TargetType.adjacentEnemy:
+        final targets = [MoveTarget(false, myPosition)];
+        if (myPosition > 0) {
+          targets.add(MoveTarget(false, myPosition - 1));
+        }
+        if (myPosition + 1 < maxPerSide) {
+          targets.add(MoveTarget(false, myPosition + 1));
+        }
+        return targets;
+      case TargetType.adjacentAlly:
+        final targets = <MoveTarget>[];
+        if (myPosition > 0) {
+          targets.add(MoveTarget(true, myPosition - 1));
+        }
+        if (myPosition + 1 < maxPerSide) {
+          targets.add(MoveTarget(true, myPosition + 1));
+        }
+        return targets;
+      case TargetType.one:
+        return List<MoveTarget>.generate(
+                maxPerSide, (i) => MoveTarget(false, i)) +
+            List<MoveTarget>.generate(maxPerSide, (i) => MoveTarget(true, i)).where((t) => t.sideIndex != myPosition).toList();
+      case TargetType.self:
+      case TargetType.allySide:
+      case TargetType.enemySide:
+      case TargetType.adjacentAllies:
+      case TargetType.adjacentEnemies:
+      case TargetType.allAdjacent:
+      case TargetType.allAllies:
+      case TargetType.allEnemies:
+      case TargetType.all:
+      case TargetType.allOther:
+        return [MoveTarget(true, myPosition)];
+    }
+  }
 }
 
 class MoveTarget {
@@ -42,7 +107,11 @@ enum MoveFlag {
   snatch,
   mirrorMove,
   kingsRock,
-  dance
+  dance,
+  sound,
+  fang,
+  claw,
+  punch;
 }
 
 class MoveEffectEntry {
@@ -96,9 +165,7 @@ class Move {
   final List<MoveEffectEntry> effects;
 
   @override
-  String toString() {
-    return '$name[$id]';
-  }
+  String toString() => name;
 
   static Move fromJson(Map<String, dynamic> jsonObject) {
     final id = jsonObject['id'] as String;
@@ -112,25 +179,26 @@ class Move {
     final category =
         MoveCategory.values.byName(jsonObject['category'] as String);
     final target =
-        TargetType.values.byName(jsonObject['target'] as String? ?? "oneEnemy");
-    final contestType =
-        ContestType.values.byName(jsonObject['target'] as String? ?? "cool");
+        TargetType.values.byName(jsonObject['target'] as String? ?? "one");
+    final contestType = ContestType.values
+        .byName(jsonObject['contestType'] as String? ?? "cool");
     final appeal = jsonObject['appeal'] as int? ?? 0;
     final jam = jsonObject['jam'] as int? ?? 0;
     final contestDescription =
         jsonObject['contest_description'] as String? ?? "";
-    final flags = (jsonObject['flags'] as List<String>? ?? [])
-        .map((s) => MoveFlag.values.byName(s))
-        .toSet();
+    final flags =
+        (jsonObject['flags'] as List<dynamic>? ?? ['protect', 'mirrorMove'])
+            .map((s) => MoveFlag.values.byName(s as String))
+            .toSet();
     final hitCount =
         HitCount.values.byName(jsonObject['hit_count'] as String? ?? "once");
-    final effects = (jsonObject['effects'] as List<dynamic>? ?? [])
-        .map((e) {
-          final map = e as Map<String, dynamic>;
-          return MoveEffectEntry(MoveEffect.effects[map['effect'] as String],
-              map['param'] as int? ?? 0, map['chance'] as double? ?? 1);
-        })
-        .toList(growable: false);
+    final effects = (jsonObject['effects'] as List<dynamic>? ?? []).map((e) {
+      final map = e as Map<String, dynamic>;
+      return MoveEffectEntry(
+          MoveEffect.effects[map['effect'] as String],
+          (map['param'] as num? ?? 0).toInt(),
+          (map['chance'] as num? ?? 1).toDouble());
+    }).toList(growable: false);
     return Move(
       id,
       name: name,
@@ -160,7 +228,6 @@ class Move {
     for (final jsonObject in jsonList) {
       fromJson(jsonObject);
     }
-    print(moves.toMap());
   }
 
   static final struggle = Move('struggle',
@@ -172,7 +239,7 @@ class Move {
       type: CreatureType.typeless,
       category: MoveCategory.physical,
       contestType: ContestType.cool,
-      targetType: TargetType.oneEnemy,
+      targetType: TargetType.one,
       appeal: 4,
       jam: 0,
       contestDescription: "",

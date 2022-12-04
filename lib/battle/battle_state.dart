@@ -5,6 +5,7 @@ import 'package:collectgame/battle/battle_action.dart';
 import 'package:collectgame/battle/effect_side.dart';
 import 'package:collectgame/data/move/move_effect.dart';
 import 'package:collectgame/data/prng.dart';
+import 'package:flutter/foundation.dart';
 
 import '../data/move/move.dart';
 import '../data/species/stat.dart';
@@ -13,9 +14,15 @@ import 'effect.dart';
 import 'effect_global.dart';
 
 typedef BattleEvent = void Function(BattleState battleState);
+typedef LogFunction = void Function(String message);
 
 class BattleState {
-  final int maxPerSide = 1;
+  BattleState({
+    this.maxPerSide = 1,
+    this.log = _debugLog,
+  });
+
+  final int maxPerSide;
   Map<int, Battler> playerSide = {};
   Map<int, Battler> enemySide = {};
   Queue<BattleEvent> eventQueue = Queue();
@@ -25,8 +32,54 @@ class BattleState {
 
   List<Battler> speedSorted = [];
 
+  LogFunction log;
+
   bool inflict(Battler target, Battler? source, Effect status) {
-    return status.onInflict?.call(this, target, source) ?? false;
+    if (status.onInflict == null) {
+      if (status.index < innateStats) {
+        target.individual.statusCondition = status;
+        return true;
+      }
+      target.setEffect(BattleEffect(status, 0));
+      return true;
+    }
+    return status.onInflict!(this, target, source);
+  }
+
+  StatChange changeStats(Battler target, Battler? source, StatChange change) {
+    change = target.effectiveAbility.onStatsChange
+            ?.call(this, target, source, change) ??
+        change;
+    for (final battler in speedSorted) {
+      change = battler.effectiveAbility.onGlobalStatChange
+              ?.call(this, target, battler, change) ??
+          change;
+    }
+    for (final stat in change.stats) {
+      final old = target.statChanges[stat.idx];
+      if (change.absolute) {
+        target.statChanges[stat.idx] = change.steps;
+      } else {
+        target.statChanges[stat.idx] += change.steps;
+        if (stat == Stat.critRatio) {
+          target.statChanges[stat.idx] =
+              min(2, max(target.statChanges[stat.idx], 0));
+        } else {
+          target.statChanges[stat.idx] =
+              min(6, max(target.statChanges[stat.idx], -6));
+        }
+      }
+      int diff = target.statChanges[stat.idx] - old;
+      if (diff == 0) {
+        log("$target's ${stat.fullName} didn't change.");
+      } else {
+        diff = min(3, max(-3, diff));
+        final adverb = ['', 'sharply ', 'drastically '][diff.abs() - 1];
+        final verb = diff > 0 ? 'rose' : 'fell';
+        log("$target's ${stat.fullName} $adverb$verb!");
+      }
+    }
+    return change;
   }
 
   Map<int, Battler> sideOf(Battler battler) {
@@ -37,7 +90,7 @@ class BattleState {
       return enemySide;
     }
     throw ArgumentError.value(
-        battler, "Missing Battler", "Provided battler is not in the battle");
+        '$battler', "Missing Battler", "Provided battler is not in the battle");
   }
 
   Map<int, Battler> sideAgainst(Battler battler) {
@@ -48,14 +101,55 @@ class BattleState {
       return playerSide;
     }
     throw ArgumentError.value(
-        battler, "Missing Battler", "Provided battler is not in the battle");
+        '$battler', "Missing Battler", "Provided battler is not in the battle");
   }
 
   void doTurn() {
     _sortBySpeed();
     for (final attacker in speedSorted) {
-      _doMove(attacker);
+      final action = attacker.queuedAction!;
+      switch (action.type) {
+        case BattleActionType.move:
+          _doMove(attacker);
+          break;
+        case BattleActionType.swap:
+          _doSwap(attacker);
+          break;
+        case BattleActionType.item:
+          _doUseItem(attacker);
+          break;
+        default:
+          break;
+      }
+      attacker.queuedAction = null;
     }
+    for (final attacker in speedSorted) {
+      if (attacker.individual.hp <= 0) {
+        continue;
+      }
+      final nonVolatile = attacker.individual.statusCondition;
+      if (nonVolatile != null) {
+        nonVolatile.endOfTurn
+            ?.call(this, attacker, BattleEffect(nonVolatile, 0));
+      }
+      if (attacker.individual.hp <= 0) {
+        continue;
+      }
+      Set<Effect> expired = {};
+      for (final effect in attacker.volatileStatus) {
+        effect.effect.endOfTurn?.call(this, attacker, effect);
+        if (effect.effect.persists?.call(this, attacker, effect) == false) {
+          expired.add(effect.effect);
+        }
+        if (attacker.individual.hp <= 0) {
+          break;
+        }
+      }
+      for (final effect in expired) {
+        attacker.removeEffect(effect);
+      }
+    }
+    _faintCheck();
   }
 
   void sendOut(Battler battler) {
@@ -72,8 +166,18 @@ class BattleState {
 
   void swapIn(Battler battler, int index) {
     final side = battler.isPlayers ? playerSide : enemySide;
+    final old = side[index];
+    if (old != null) {
+      speedSorted[speedSorted.indexOf(old)] = battler;
+    }
     side[index] = battler;
     battler.indexOnSide = index;
+  }
+
+  static void _debugLog(String message) {
+    if (kDebugMode) {
+      print(message);
+    }
   }
 
   int _priorityFor(Battler attacker) {
@@ -118,9 +222,10 @@ class BattleState {
       ..sort((a, b) {
         final priority = _priorityFor(a) - _priorityFor(b);
         if (priority != 0) {
-          return priority;
+          return -priority; // High priority means go first
         }
-        return ((a.effectiveSpeed(this) - b.effectiveSpeed(this))) * trickRoom;
+        return -((a.effectiveSpeed(this) - b.effectiveSpeed(this))) *
+            trickRoom; // High speed goes first, too
       });
   }
 
@@ -137,35 +242,58 @@ class BattleState {
   }
 
   void _doMoveIneffectiveOn(Battler attacker, Battler target) {
-    // TODO just say the "doesn't effect" message
+    eventQueue.add((state) => state.log("It doesn't affect $target..."));
   }
 
   Iterable<Battler> _decodeTargets(
       Battler attacker, MoveTarget target, TargetType targetType) {
+    // TODO make this method make sense
     final attackerSide = attacker.isPlayers ? playerSide : enemySide;
     final otherSide = attacker.isPlayers ? enemySide : playerSide;
     switch (targetType) {
       case TargetType.all:
+      case TargetType.allOther:
         return playerSide.values.toList() + enemySide.values.toList();
       case TargetType.self:
       case TargetType.allySide:
       case TargetType.enemySide:
-        return [attacker];
+        return [
+          attacker
+        ]; // When an entire side is the target, target self for simplicity
       case TargetType.allAllies:
+      case TargetType.adjacentAllies:
         return attacker.isPlayers ? playerSide.values : enemySide.values;
       case TargetType.allEnemies:
+      case TargetType.adjacentEnemies:
+      case TargetType.allAdjacent:
         return attacker.isPlayers ? enemySide.values : playerSide.values;
       case TargetType.oneAlly:
       case TargetType.oneEnemy:
-      case TargetType.adjacentAllies:
-      case TargetType.adjacentEnemies:
+      case TargetType.oneAdjacent:
+      case TargetType.one:
+      case TargetType.adjacentEnemy:
+      case TargetType.adjacentAlly:
         final side = (target.selfSide ? attackerSide : otherSide);
-        return [side[target.sideIndex] ?? side.values.first];
+        return [
+          if (side.isNotEmpty) (side[target.sideIndex] ?? side.values.first)
+        ];
     }
   }
 
-  int _calcInitialDamage(
-      Battler attacker, Battler defender, Move move, bool crit) {
+  Battler? _decodeSingleTarget(Battler attacker, MoveTarget target) {
+    final side =
+        (attacker.isPlayers == target.selfSide) ? playerSide : enemySide;
+    return side[target.sideIndex];
+  }
+
+  double _calcEfficacy(Battler attacker, Battler defender, Move move) {
+    double efficacy = defender.effectiveTypes
+        .fold(1, (i, type) => i * move.type.efficacy(type));
+    return efficacy;
+  }
+
+  int _calcInitialDamage(Battler attacker, Battler defender, Move move,
+      bool crit, double efficacy) {
     // Damage calculation as per https://bulbapedia.bulbagarden.net/wiki/Damage#Generation_V_onward
     int power = move.power;
     if (power != 0) {
@@ -198,15 +326,7 @@ class BattleState {
       }
     }
 
-    double efficacy = move.type.efficacy(defender.individual.species.type1);
-    if (defender.individual.species.type2 != null) {
-      efficacy *= move.type.efficacy(defender.individual.species.type2!);
-    }
-
-    double stab = (move.type == attacker.individual.species.type1 ||
-            move.type == attacker.individual.species.type2)
-        ? 1.5
-        : 1;
+    double stab = attacker.effectiveTypes.contains(move.type) ? 1.5 : 1;
 
     double roll = PRNG.instance.uniform() * 0.15 + 0.85;
 
@@ -226,14 +346,30 @@ class BattleState {
     if (damage > 0) {
       inflict(defender, attacker, Effect.tookDamageThisTurn);
     }
-    print('$attacker does $damage to $defender!');
+    log('$attacker does $damage to $defender!');
     defender.individual.hp -= damage;
     for (final effect in move.effects) {
       effect.effect.onDoDamage
           ?.call(this, attacker, defender, damage, effect.param);
     }
-    if (defender.individual.hp <= 0) {
-      print('$defender Fainted');
+  }
+
+  void _remove(Battler battler) {
+    if (battler.isPlayers && playerSide.containsKey(battler.indexOnSide)) {
+      log('$battler fainted!');
+      playerSide.remove(battler.indexOnSide);
+    } else if (!battler.isPlayers &&
+        enemySide.containsKey(battler.indexOnSide)) {
+      log('$battler fainted!');
+      enemySide.remove(battler.indexOnSide);
+    }
+  }
+
+  void _faintCheck() {
+    for (final battler in speedSorted) {
+      if (battler.individual.hp <= 0) {
+        _remove(battler);
+      }
     }
   }
 
@@ -258,6 +394,14 @@ class BattleState {
   }
 
   bool _performMoveOn(Battler attacker, Battler target, Move move) {
+    if (attacker.individual.hp <= 0) {
+      // User already fainted
+      return false;
+    }
+    if (target.individual.hp <= 0) {
+      // Target already fainted
+      return false;
+    }
     if (move.accuracy > 0 && attacker != target) {
       // Accuracy == 0 is a never-miss move.
       int accuracy = move.accuracy;
@@ -282,13 +426,24 @@ class BattleState {
       }
       if (PRNG.instance.uniform() * 100 > accuracy) {
         _doMoveMiss(attacker, target, move);
+        log("$target evaded $attacker's $move.");
+        return false;
+      }
+    }
+    // Check for effect based failure, e.g. Protect
+    for (final effect in target.volatileStatus) {
+      if (effect.effect.successModifierDefend
+              ?.call(this, target, effect, move, true) ==
+          false) {
+        _doMoveMiss(attacker, target, move);
         return false;
       }
     }
     // Crit check
-    int critStages = attacker.effectiveAbility.critModifierAttack
-            ?.call(this, attacker, target, move, 0) ??
-        0;
+    int critStages = attacker.statChanges[Stat.critRatio.idx];
+    critStages = attacker.effectiveAbility.critModifierAttack
+            ?.call(this, attacker, target, move, critStages) ??
+        critStages;
     critStages = target.effectiveAbility.critModifierDefend
             ?.call(this, attacker, target, move, critStages) ??
         critStages;
@@ -310,7 +465,18 @@ class BattleState {
     }
 
     bool hitTarget = move.power > 0;
-    int damage = _calcInitialDamage(attacker, target, move, critical);
+    double efficacy = _calcEfficacy(attacker, target, move);
+    if (move.power > 0) {
+      if (critical) {
+        log("It's a critical hit on $target!");
+      }
+      if (efficacy > 1) {
+        log("It's supereffective on $target!");
+      } else if (efficacy < 1) {
+        log("It's not very effective on $target!");
+      }
+    }
+    int damage = _calcInitialDamage(attacker, target, move, critical, efficacy);
     damage = target.effectiveAbility.damageModifierDefend
             ?.call(this, attacker, target, move, damage) ??
         damage;
@@ -345,10 +511,15 @@ class BattleState {
     Move move = attackParam.move;
     MoveTarget target = attackParam.target;
 
+    // Check if we're out of PP
+    if (attacker.individual.ppOf(move) <= 0) {
+      move = Move.struggle;
+    }
+
     // Check success against each status
     bool success = true;
     for (final effect in attacker.volatileStatus) {
-      if (!(effect.effect.successModifier
+      if (!(effect.effect.successModifierAttack
               ?.call(this, attacker, effect, move, success) ??
           true)) {
         success = false;
@@ -357,8 +528,13 @@ class BattleState {
       }
     }
 
+    // Move is effectively used, expend the PP
+    attacker.individual.losePP(move, 1);
+    log('$attacker used $move!');
+
     // Get targets
-    var initialTargets = _decodeTargets(attacker, target, move.targetType).toList();
+    var initialTargets =
+        _decodeTargets(attacker, target, move.targetType).toList();
     var targets = initialTargets.toList();
     for (final target in initialTargets) {
       targets = target.effectiveAbility.targetModifier
@@ -380,6 +556,7 @@ class BattleState {
     }
     if (!success) {
       _doMoveFail(attacker);
+      log('It failed...');
       return;
     }
     targets = initialTargets;
@@ -395,12 +572,13 @@ class BattleState {
     success = move.targetType == TargetType.self;
     for (final target in targets) {
       bool hitTarget = _performMoveOn(attacker, target, move);
+      _faintCheck();
       if (hitTarget) {
         success = true;
       }
     }
     if (!success) {
-      _doMoveFail(attacker);
+      _doMoveFail(attacker); // Should this really be called?
       return;
     }
 
@@ -412,5 +590,35 @@ class BattleState {
       attacker.timesLastMoveUsed = 1;
     }
     inflict(attacker, null, Effect.movedThisTurn);
+  }
+
+  void _doSwap(Battler attacker) {
+    final newIndex = attacker.queuedAction!.param as int;
+    log('Withdrew $attacker');
+    attacker.commander!.sendOut(this, newIndex, position: attacker.indexOnSide);
+    log('Sent out ${attacker.commander!.activeBattlers[attacker.indexOnSide]}');
+  }
+
+  void _doUseItem(Battler attacker) {
+    final param = attacker.queuedAction!.param as BattleActionItemParam;
+    final item = param.item;
+    final player = attacker.commander!;
+    if (player.bag.quantityOf(item) == 0) {
+      return;
+    }
+    print('$attacker is using a ${item.name}');
+    final target = param.target;
+    bool success = false;
+    if (target == null && item.onBattleUse != null) {
+      // Use on the user battler
+      success = item.onBattleUse!.call(this, attacker, item.param);
+    } else if (target != null && item.onBattlerUse != null) {
+      success = item.onBattlerUse!(this, target, player, item.param);
+    }
+    if (success) {
+      player.bag.take(item, 1);
+    } else {
+      log('${item.name} had no effect...');
+    }
   }
 }

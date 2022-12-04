@@ -6,10 +6,15 @@
     "type2": "poison",
     "dex_no": 1,
     "stats": [45, 49, 49, 65, 65, 45],
-    "ability1": "aroma_veil",
-    "egg_group1": "undiscovered",
+    "ability1": "overgrow",
+    "egg_group1": "monster",
+    "egg_group2": "grass",
+    "gender_distribution": "femaleOneEighth",
     "level_moves": [
-      [0, "scratch"]
+      [0, "razor_leaf"],
+      [0, "protect"],
+      [0, "rock_slide"],
+      [0, "poison_powder"]
     ]
   }
 ]

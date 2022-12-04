@@ -8,6 +8,60 @@
     "pp": 35
   },
   {
+    "id": "tackle",
+    "name": "Tackle",
+    "power": 40,
+    "type": "normal",
+    "category": "physical",
+    "pp": 35
+  },
+  {
+    "id": "vine_whip",
+    "name": "Vine Whip",
+    "power": 45,
+    "type": "grass",
+    "category": "physical",
+    "pp": 25
+  },
+  {
+    "id": "seed_bomb",
+    "name": "Seed Bomb",
+    "power": 80,
+    "type": "grass",
+    "category": "physical",
+    "pp": 15
+  },
+  {
+    "id": "take_down",
+    "name": "Take Down",
+    "power": 90,
+    "accuracy": 85,
+    "type": "normal",
+    "category": "physical",
+    "pp": 20,
+    "effects": [
+      {
+        "effect": "recoil_fraction",
+        "param": 25
+      }
+    ]
+  },
+  {
+    "id": "double_edge",
+    "name": "Double-Edge",
+    "power": 120,
+    "accuracy": 100,
+    "type": "normal",
+    "category": "physical",
+    "pp": 15,
+    "effects": [
+      {
+        "effect": "recoil_fraction",
+        "param": 33
+      }
+    ]
+  },
+  {
     "id": "protect",
     "name": "Protect",
     "type": "normal",
@@ -18,6 +72,102 @@
       }
     ],
     "pp": 10,
-    "priority": 4
+    "priority": 4,
+    "target": "self"
+  },
+  {
+    "id": "rock_slide",
+    "name": "Rock Slide",
+    "type": "rock",
+    "category": "physical",
+    "pp": 10,
+    "target": "adjacentEnemies",
+    "power": 75,
+    "accuracy": 90,
+    "effects": [
+      {
+        "effect": "flinch",
+        "chance": 0.3
+      }
+    ]
+  },
+  {
+    "id": "growl",
+    "name": "Growl",
+    "type": "normal",
+    "category": "status",
+    "pp": 40,
+    "target": "adjacentEnemies",
+    "effects": [
+      {
+        "effect": "change_stats",
+        "param": 4610,
+        "_comment": "1 << 12 | 1 << 9 | 1 << 1 = decrease attack by 1"
+      }
+    ],
+    "flags": ["protect", "mirrorMove", "magicCoat", "sound"]
+  },
+  {
+    "id": "growth",
+    "name": "Growth",
+    "type": "normal",
+    "category": "status",
+    "pp": 20,
+    "target": "self",
+    "effects": [
+      {
+        "effect": "change_stats",
+        "param": 522,
+        "_comment": "1 << 9 | 1 << 3 | 1 << 1 = increase attack and sp attack by 1"
+      }
+    ],
+    "flags": ["protect", "mirrorMove", "magicCoat"]
+  },
+  {
+    "id": "sweet_scent",
+    "name": "Sweet Scent",
+    "type": "normal",
+    "category": "status",
+    "pp": 20,
+    "target": "adjacentEnemies",
+    "effects": [
+      {
+        "effect": "change_stats",
+        "param": 4736,
+        "_comment": "1 << 12 | 1 << 9 | 1 << 7 = decrease evasion by 1"
+      }
+    ],
+    "flags": ["protect", "mirrorMove", "magicCoat"]
+  },
+  {
+    "id": "poison_powder",
+    "name": "Poison Powder",
+    "type": "poison",
+    "category": "status",
+    "pp": 35,
+    "accuracy": 75,
+    "effects": [
+      {
+        "effect": "inflict_target",
+        "param": 0
+      }
+    ]
+  },
+  {
+    "id": "razor_leaf",
+    "name": "Razor Leaf",
+    "type": "grass",
+    "category": "physical",
+    "pp": 25,
+    "target": "adjacentEnemies",
+    "power": 55,
+    "accuracy": 95,
+    "effects": [
+      {
+        "effect": "crit_ratio",
+        "param": 1
+      }
+    ],
+    "flags": ["protect", "mirrorMove", "kingsRock"]
   }
 ]

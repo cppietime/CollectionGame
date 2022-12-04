@@ -4,12 +4,17 @@ import 'package:collectgame/data/move/move.dart';
 import 'package:collectgame/data/move/move_effect.dart';
 import 'package:collectgame/data/registry.dart';
 
+import '../species/creature_type.dart';
+import '../species/stat.dart';
+
 typedef KnockoutTrigger = void Function(
     BattleState battleState, Individual fainted, Individual? cause);
+
 typedef GlobalTrigger = void Function(
     BattleState battleState, Individual subject);
 typedef AbilityModifier<T> = T Function(
     BattleState battleState, Battler user, Battler target, Move move, T param);
+typedef StatChangeTrigger = StatChange Function(BattleState battleState, Battler subject, Battler? source, StatChange statChange);
 
 class Ability {
   static Registry<Ability> abilities = Registry();
@@ -37,42 +42,66 @@ class Ability {
     this.targetModifier,
     this.onTurnEnd,
     this.priorityModifier,
+    this.onStatsChange,
+    this.onGlobalStatChange,
     this.description = "",
   }) {
     register();
   }
 
   void register() {
-    print('Registing $id');
     index = abilities.put(id, this);
-    print('Registered');
   }
 
   final String name;
   final String id;
   final String description;
+
   late final int index;
 
   final AbilityModifier<bool>? affectsModifierAttack;
+
   final AbilityModifier<bool>? affectsModifierDefend;
+
   final AbilityModifier<int>? accuracyModifierAttack;
+
   final AbilityModifier<int>? accuracyModifierDefend;
+
   final AbilityModifier<int>? damageModifierAttack;
+
   final AbilityModifier<int>? damageModifierDefend;
+
   final AbilityModifier<int>? critModifierAttack;
+
   final AbilityModifier<int>? critModifierDefend;
+
   final AbilityModifier<int>? speedModifier;
+
   final AbilityModifier<int>? priorityModifier;
+
   final KnockoutTrigger? onKnockOut;
+
   final KnockoutTrigger? onKnockedOut;
+
   final MoveHitTrigger? onTouch;
+
   final MoveHitTrigger? onTouched;
+
   final GlobalTrigger? onSendOut;
+
   final GlobalTrigger? onSwitchedOut;
+
   final MoveUseTrigger? onAllyAttack;
+
   final MoveUseTrigger? onAllyAttacked;
+
   final TargetModifier? targetModifier;
+
   final GlobalTrigger? onTurnEnd;
+
+  final StatChangeTrigger? onStatsChange;
+
+  final StatChangeTrigger? onGlobalStatChange;
 
   /*
   TODO typedefs and members for these functions
@@ -147,6 +176,9 @@ class Ability {
     Ability("drizzle", "Drizzle");
     Ability("speed_boost", "Speed Boost");
     Ability("battle_armor", "Battle Armor");
+    Ability("overgrow", "Overgrow",
+        damageModifierAttack: (state, user, target, move, power) =>
+            _lowHpPowerUpType(user, move, power, 3, CreatureType.grass));
 
     // Gen IV
     Ability("tangled_feet", "Tangled Feet");
@@ -159,11 +191,29 @@ class Ability {
 
     // Gen VII
     Ability("stamina", "Stamina");
+    Ability("corrosion", "Corrosion",
+        affectsModifierAttack: (state, user, target, move, success) {
+      if (!success &&
+          (target.effectiveTypes.contains(CreatureType.steel)) &&
+          move.type == CreatureType.poison &&
+          move.category == MoveCategory.status) {
+        return true;
+      }
+      return success;
+    });
 
     // Gen VIII
     Ability("intrepid_sword", "Intrepid Sword");
 
     // Gen IX
     Ability("lingering_aroma", "Lingering Aroma");
+  }
+
+  static int _lowHpPowerUpType(Battler battler, Move move, int power,
+      int denominator, CreatureType type) {
+    if (battler.individual.hp <= battler.calcStat(Stat.hp) ~/ denominator) {
+      power += power ~/ 2;
+    }
+    return power;
   }
 }

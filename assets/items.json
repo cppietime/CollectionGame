@@ -1,0 +1,10 @@
+[
+  {
+    "id": "potion",
+    "name": "Potion",
+    "description": "Heals 20 HP",
+    "pocket": "medicine",
+    "battler_callback": "heal",
+    "param": 20
+  }
+]

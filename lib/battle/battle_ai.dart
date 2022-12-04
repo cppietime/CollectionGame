@@ -24,18 +24,29 @@ class RandomBattleAi extends BattleAi {
     }
     final move =
         candidates.isEmpty ? Move.struggle : PRNG.instance.choice(candidates);
-    MoveTarget target;
-    switch (move.targetType) {
+    Iterable<MoveTarget> targetCandidates = move.targetType.allPossibleTargets(state.maxPerSide, mine.indexOnSide);
+    if (move.targetType == TargetType.one || move.targetType == TargetType.oneAdjacent) {
+      targetCandidates = targetCandidates.where((target) => !target.selfSide);
+    }
+    MoveTarget target = PRNG.instance.choice(targetCandidates.toList());
+    /*switch (move.targetType) {
+      // TODO probably move this to a separate method
       case TargetType.all:
+      case TargetType.allOther:
       case TargetType.enemySide:
       case TargetType.allEnemies:
       case TargetType.adjacentEnemies:
+      case TargetType.one:
+      case TargetType.oneAdjacent:
+      case TargetType.allAdjacent:
+      case TargetType.adjacentEnemy:
         target = const MoveTarget(false, 0);
         break;
       case TargetType.self:
       case TargetType.allAllies:
       case TargetType.allySide:
       case TargetType.adjacentAllies:
+      case TargetType.adjacentAlly:
         target = const MoveTarget(true, 0);
         break;
       case TargetType.oneAlly:
@@ -52,7 +63,7 @@ class RandomBattleAi extends BattleAi {
         final enemySide = state.sideAgainst(mine);
         target = MoveTarget(false, PRNG.instance.upto(enemySide.length));
         break;
-    }
+    }*/
     return BattleAction(
         BattleActionType.move, BattleActionAttackParam(move, target));
   }

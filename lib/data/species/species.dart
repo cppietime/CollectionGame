@@ -13,36 +13,36 @@ import 'nature.dart';
 
 typedef LvlToExp = int Function(int lvl);
 // Taken from https://bulbapedia.bulbagarden.net/wiki/Experience#Relation_to_level
-int _slow(int lvl) => (5 * pow(lvl, 3) / 4) as int;
+int _slow(int lvl) => 5 * pow(lvl, 3) ~/ 4;
 
 int _mediumSlow(int lvl) =>
-    (6 * pow(lvl, 3) / 5 - 15 * lvl * lvl + 100 * lvl - 140) as int;
+    (6 * pow(lvl, 3) / 5 - 15 * lvl * lvl + 100 * lvl - 140).toInt();
 
 int _mediumFast(int lvl) => lvl * lvl * lvl;
 
-int _fast(int lvl) => (4 * pow(lvl, 3) / 5) as int;
+int _fast(int lvl) => (4 * pow(lvl, 3) ~/ 5);
 
 int _fluctuating(int lvl) {
   if (lvl < 15) {
-    return pow(lvl, 3) * (24 + (lvl + 1) / 3 as int) / 50 as int;
+    return pow(lvl, 3) * (24 + (lvl + 1) / 3 as int) ~/ 50;
   }
   if (lvl < 36) {
-    return pow(lvl, 3) * (lvl + 14) / 50 as int;
+    return pow(lvl, 3) * (lvl + 14) ~/ 50;
   }
-  return pow(lvl, 3) * (32 + lvl / 2 as int) / 50 as int;
+  return pow(lvl, 3) * (32 + lvl / 2 as int) ~/ 50;
 }
 
 int _erratic(int lvl) {
   if (lvl < 50) {
-    return pow(lvl, 3) * (100 - lvl) / 50 as int;
+    return pow(lvl, 3) * (100 - lvl) ~/ 50;
   }
   if (lvl < 68) {
-    return pow(lvl, 3) * (150 - lvl) / 100 as int;
+    return pow(lvl, 3) * (150 - lvl) ~/ 100;
   }
   if (lvl < 98) {
-    return pow(lvl, 3) * (1911 - 10 * lvl / 3 as int) / 500 as int;
+    return pow(lvl, 3) * (1911 - 10 * lvl / 3 as int) ~/ 500;
   }
-  return pow(lvl, 3) * (160 - lvl) / 100 as int;
+  return pow(lvl, 3) * (160 - lvl) ~/ 100;
 }
 
 enum ExpCurve {
@@ -58,9 +58,39 @@ enum ExpCurve {
   final LvlToExp levelFn;
 }
 
-enum GenderDistribution { genderless, equal }
+enum GenderDistribution {
+  genderless(0),
+  equal(0.5),
+  allFemale(1),
+  allMale(0),
+  femaleOneEighth(0.125),
+  femaleOneQuarter(0.25),
+  femaleThreeQuarters(0.75),
+  femaleSevenEighths(0.875);
 
-enum EggGroup { undiscovered }
+  const GenderDistribution(this.femaleChance);
+
+  final double femaleChance;
+}
+
+enum EggGroup {
+  monster,
+  humanLike,
+  water1,
+  water3,
+  bug,
+  mineral,
+  flying,
+  amorphous,
+  field,
+  water2,
+  fairy,
+  ditto,
+  grass,
+  dragon,
+  undiscovered,
+  genderless;
+}
 
 class LevelUpMove {
   const LevelUpMove(this.level, this.move);
@@ -136,6 +166,7 @@ class Species {
   final int hatchTime;
   final EggGroup eggGroup1;
   final EggGroup? eggGroup2;
+  Species? evolvesFrom;
 
   int calcStat(Stat stat, int level, int iv, int ev, Nature nature) {
     int baseStat = baseStats[stat.idx] * 2;
@@ -157,6 +188,15 @@ class Species {
       }
       return baseStat;
     }
+  }
+
+  Species breedsTo() {
+    // TODO baby species that need held items
+    Species child = this;
+    while (child.evolvesFrom != null) {
+      child = child.evolvesFrom!;
+    }
+    return child;
   }
 
   @override
@@ -253,6 +293,31 @@ class Species {
     for (final jsonObject in jsonList) {
       fromJson(jsonObject as Map<String, dynamic>);
     }
-    print(species.toMap());
+    for (final base in species.values) {
+      for (final evolution in base.evolutions) {
+        final into = species[evolution.intoId];
+        into.evolvesFrom = base;
+      }
+    }
+  }
+
+  static bool canBreed(Species one, Species two) {
+    if (one.eggGroup1 == EggGroup.undiscovered || two.eggGroup1 == EggGroup.undiscovered) {
+      return false;
+    }
+    if (one.eggGroup1 == EggGroup.ditto && two.eggGroup1 == EggGroup.ditto) {
+      return false;
+    }
+    if (one.eggGroup1 == EggGroup.ditto) {
+      return two.eggGroup1 != EggGroup.undiscovered;
+    }
+    if (two.eggGroup1 == EggGroup.ditto) {
+      return one.eggGroup1 != EggGroup.undiscovered;
+    }
+    final oneOne = one.eggGroup1 == two.eggGroup1;
+    final oneTwo = one.eggGroup1 == two.eggGroup2;
+    final twoOne = one.eggGroup2 == two.eggGroup1;
+    final twoTwo = one.eggGroup2 == two.eggGroup2 && one.eggGroup2 != null;
+    return oneOne || oneTwo || twoOne || twoTwo;
   }
 }

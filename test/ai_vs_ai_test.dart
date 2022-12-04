@@ -1,4 +1,6 @@
+import 'package:collectgame/battle/battle.dart';
 import 'package:collectgame/battle/battle_ai.dart';
+import 'package:collectgame/battle/battle_action.dart';
 import 'package:collectgame/battle/battle_player.dart';
 import 'package:collectgame/battle/battle_state.dart';
 import 'package:collectgame/battle/battler.dart';
@@ -9,35 +11,34 @@ import 'package:collectgame/data/species/species.dart';
 import 'package:flutter/cupertino.dart';
 
 void main() async {
-  print('Enter main');
   WidgetsFlutterBinding.ensureInitialized();
-  print('Init whatever');
   Ability.initialize();
-  print('Init abilities');
   MoveEffect.initialize();
-  print('Init effects');
   await Move.readMoves();
   await Species.readSpecies();
-  print(Move.moves.toMap());
-  print(Species.species.toMap());
-  final myBulba = Battler(Individual(Species.species['bulbasaur'], exp: 500))..isPlayers = true;
-  final yourBulba = Battler(Individual(Species.species['bulbasaur'], exp: 500))..isPlayers = false;
-  myBulba.individual.movePP[0] = 40;
-  myBulba.individual.defaultMoves();
-  print(myBulba.individual.currentMoves);
-  final battle = BattleState();
-  battle.sendOut(myBulba);
-  battle.sendOut(yourBulba);
+  final myBulba = Individual(Species.species['bulbasaur'], exp: 500);
+  final yourBulba = Individual(Species.species['bulbasaur'], exp: 500);
+  myBulba.movePP[0] = 0; // Enough to use scratch but low enough to end up using Struggle
+  myBulba.movePP[1] = 3; // Enough to use protect but low enough to end up using Struggle
+  myBulba.defaultMoves();
+  final battleState = BattleState();
   final ai = RandomBattleAi();
-  final player = BattlePlayer();
-  print('Initialized');
+  final playerOne = BattlePlayer()
+    ..isPlayer = true;
+  final playerTwo = BattlePlayer()..ai = ai;
+  final battle = Battle(battleState)..players.addAll([playerOne, playerTwo]);
 
-  while (myBulba.individual.hp > 0 && yourBulba.individual.hp > 0) {
-    print("You're at ${myBulba.individual.hp}, they're at ${yourBulba.individual.hp}");
-    myBulba.queuedAction = ai.decide(battle, myBulba, player);
-    yourBulba.queuedAction = ai.decide(battle, yourBulba, player);
+  playerOne
+    ..party.add(myBulba)
+    ..sendOut(battle.state, 0);
+  playerTwo
+    ..party.add(yourBulba)
+    ..sendOut(battle.state, 0);
+
+  while (myBulba.hp > 0 && yourBulba.hp > 0) {
+    print("You're at ${myBulba.hp}, they're at ${yourBulba.hp}");
+    battle.registerAction(playerOne, playerOne.activeBattlers[0]!, BattleAction(BattleActionType.move, BattleActionAttackParam(myBulba.currentMoves[1]!, MoveTarget.fromInt(0))));
     battle.doTurn();
-    //break;
   }
-  print("You're at ${myBulba.individual.hp}, they're at ${yourBulba.individual.hp}");
+  print("You're at ${myBulba.hp}, they're at ${yourBulba.hp}");
 }

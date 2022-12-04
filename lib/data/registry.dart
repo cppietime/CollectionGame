@@ -9,6 +9,8 @@ class Registry<T> {
     return _entries[index];
   }
 
+  Iterable<T> get values => _entries;
+
   int? getIndex(String key) {
     if (!_caseSensitive) {
       key = key.toLowerCase();
