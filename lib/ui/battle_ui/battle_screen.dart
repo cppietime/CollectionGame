@@ -74,10 +74,10 @@ class BattleMenu extends StatelessWidget {
   final Battler battler;
   final Battle battle;
   final BattlePlayer player;
-  final void Function(Move, MoveTarget) onMoveChosen;
-  final void Function(int) onSwap;
-  final void Function(Item) onItemChosen;
-  final void Function()? onCancel;
+  final Future<void> Function(Move, MoveTarget) onMoveChosen;
+  final Future<void> Function(int) onSwap;
+  final Future<void> Function(Item) onItemChosen;
+  final Future<void> Function()? onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +107,7 @@ class BattleMenu extends StatelessWidget {
                         battle.state.maxPerSide, battler.indexOnSide);
                     if (candidates.length == 1) {
                       print('$moveChoice can only target ${candidates.first}');
-                      onMoveChosen(moveChoice, candidates.first);
+                      await onMoveChosen(moveChoice, candidates.first);
                     } else {
                       final target = await showDialog(
                         context: context,
@@ -117,7 +117,7 @@ class BattleMenu extends StatelessWidget {
                       );
                       if (target != null) {
                         print('Chosen $target for $moveChoice');
-                        onMoveChosen(moveChoice, target);
+                        await onMoveChosen(moveChoice, target);
                       }
                     }
                   }
@@ -131,7 +131,7 @@ class BattleMenu extends StatelessWidget {
                     builder: (context) => BattleBagScreen(player.bag),
                   );
                   if (itemChoice != null) {
-                    onItemChosen(itemChoice);
+                    await onItemChosen(itemChoice);
                   }
                 },
               ),
@@ -155,7 +155,7 @@ class BattleMenu extends StatelessWidget {
                   );
                   print('Chose party member at number $index');
                   if (index != null) {
-                    onSwap(index);
+                    await onSwap(index);
                   }
                 },
               ),
@@ -193,11 +193,16 @@ class BattleScreen extends StatefulWidget {
 }
 
 class _BattleScreenState extends State<BattleScreen> {
+  void initState() {
+    widget.player.selector = (x) async => await _playerSelector(x) ?? -1;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!widget.battle.battleStillActive()) {
       return const Text('Battle over!');
     }
+    print(widget.player.activeBattlers);
     final battler = widget.player.activeBattlers[widget.activeIndex]!;
     return Column(
       children: [
@@ -217,20 +222,20 @@ class _BattleScreenState extends State<BattleScreen> {
     );
   }
 
-  void _onMoveChosen(Move move, Battler battler, MoveTarget target) {
+  Future<void> _onMoveChosen(Move move, Battler battler, MoveTarget target) async {
     final action = BattleAction(
         BattleActionType.move, BattleActionAttackParam(move, target));
     widget.battle.registerAction(widget.player, battler, action, false);
-    _ontoNext();
+    await _ontoNext();
   }
 
-  void _onSwap(Battler battler, int index) {
+  Future<void> _onSwap(Battler battler, int index) async {
     final action = BattleAction(BattleActionType.swap, index);
     widget.battle.registerAction(widget.player, battler, action, false);
-    _ontoNext();
+    await _ontoNext();
   }
 
-  void _onItemChosen(Battler battler, Item item) async {
+  Future<void> _onItemChosen(Battler battler, Item item) async {
     print('$battler will use a ${item.name}');
     if (item.onBattleUse != null &&
         item.battlePredicate?.call(widget.battle.state, battler, item.param) !=
@@ -253,7 +258,7 @@ class _BattleScreenState extends State<BattleScreen> {
       }
     }
     if (battler.queuedAction != null) {
-      _ontoNext();
+      await _ontoNext();
     } else {
       showDialog(
         context: context,
@@ -268,10 +273,10 @@ class _BattleScreenState extends State<BattleScreen> {
     }
   }
 
-  void _ontoNext() {
+  Future<void> _ontoNext() async {
     final turnComplete = widget.battle.readyForTurn();
     if (turnComplete) {
-      widget.battle.doTurn();
+      await widget.battle.doTurn();
       widget.activeIndex = 0;
       widget.battle.state.log('-------------------');
       widget.battle.state.log('');
@@ -290,14 +295,23 @@ class _BattleScreenState extends State<BattleScreen> {
     setState(() {});
   }
 
-  void _onCancel() {
-    // TODO test me
+  Future<void> _onCancel() async {
     do {
+      widget.player.activeBattlers[widget.activeIndex]!.queuedAction = null;
       widget.activeIndex--;
       if (widget.activeIndex < 0) {
         widget.activeIndex = widget.battle.state.maxPerSide - 1;
       }
     } while (widget.player.activeBattlers[widget.activeIndex] == null);
     widget.actionsToCancel--;
+    widget.player.activeBattlers[widget.activeIndex]!.queuedAction = null;
+    setState(() {});
+  }
+
+  Future<int?> _playerSelector(BattlePlayer player) async {
+    return await showDialog<int>(
+      context: context,
+      builder: (context) => PartySelector(widget.player, false, true),
+    );
   }
 }

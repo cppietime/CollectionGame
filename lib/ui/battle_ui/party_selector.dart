@@ -12,8 +12,8 @@ class PartySelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final canSend = player.party.map((member) =>
         member.hp > 0 &&
-        !player.activeBattlers.values
-            .any((battler) => battler.individual == member)).toList();
+            (!player.activeBattlers.values
+            .any((battler) => battler.individual == member))).toList();
     return AlertDialog(
       title: const Text('Choose a party member'),
       content: Container(

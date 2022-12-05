@@ -34,12 +34,13 @@ void main() async {
     ..party.add(myBulba)
     ..party.add(myBulba2)
     ..party.add(myBulba3)
-    ..replaceFainted(battle.state)
     ..bag.give(Item.items['potion'], 2);
   playerTwo
     ..party.add(yourBulba)
-    ..party.add(yourBulba2)
-    ..replaceFainted(battle.state);
+    ..party.add(yourBulba2);
+
+  await playerOne.replaceFainted(battle.state);
+  await playerTwo.replaceFainted(battle.state);
 
   runApp(MainApp(() => BattleScreen(battle, playerOne)));
 }

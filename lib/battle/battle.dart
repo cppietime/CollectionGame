@@ -41,14 +41,14 @@ class Battle {
     return !players.any((player) => !player.canStillBattle());
   }
 
-  void doTurn() {
+  Future<void> doTurn() async {
     for (final player in players) {
       player.runAi(state);
     }
     state.doTurn();
     for (final player in players) {
       //player.activeBattlers.removeWhere((battler) => battler.individual.hp <= 0);
-      player.replaceFainted(state);
+      await player.replaceFainted(state);
     }
     if (!battleStillActive()) {
       // TODO what to do when the battle ends
