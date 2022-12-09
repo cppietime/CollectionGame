@@ -14,19 +14,22 @@ void main() async {
   await Move.readMoves();
   await Species.readSpecies();
   await Item.readItems();
-  final myBulba = Individual(Species.species['bulbasaur'], exp: 500)..nickname = "Sore";
-  final myBulba2 = Individual(Species.species['bulbasaur'], exp: 500)..nickname = "Ballbasaur";
-  final myBulba3 = Individual(Species.species['bulbasaur'], exp: 500)..nickname = "Bass";
+  final myBulba = Individual(Species.species['bulbasaur'], exp: 500)
+    ..nickname = "Sore";
+  final myBulba2 = Individual(Species.species['bulbasaur'], exp: 500)
+    ..nickname = "Ballbasaur";
+  final myBulba3 = Individual(Species.species['bulbasaur'], exp: 500)
+    ..nickname = "Bass";
   final yourBulba = Individual(Species.species['bulbasaur'], exp: 500);
-  final yourBulba2 = Individual(Species.species['bulbasaur'], exp: 500)..nickname = "Bulbutt";
+  final yourBulba2 = Individual(Species.species['bulbasaur'], exp: 500)
+    ..nickname = "Bulbutt";
   myBulba.movePP.fillRange(0, 4, 10);
   myBulba.defaultMoves();
   myBulba2.defaultMoves();
   myBulba3.defaultMoves();
   final battleState = BattleState(maxPerSide: 2);
   final ai = RandomBattleAi();
-  final playerOne = BattlePlayer()
-    ..isPlayer = true;
+  final playerOne = BattlePlayer()..isPlayer = true;
   final playerTwo = BattlePlayer()..ai = ai;
   final battle = Battle(battleState)..players.addAll([playerOne, playerTwo]);
 
@@ -34,27 +37,43 @@ void main() async {
     ..party.add(myBulba)
     ..party.add(myBulba2)
     ..party.add(myBulba3)
-    ..bag.give(Item.items['potion'], 2);
+    ..bag.give(Item.items['potion'], 2)
+    ..bag.give(Item.items['pokeball'], 50);
   playerTwo
-    ..party.add(yourBulba)
-    ..party.add(yourBulba2);
+    //..party.add(yourBulba)
+    ..party.add(yourBulba2)
+    ..isWild = true;
 
   await playerOne.replaceFainted(battle.state);
   await playerTwo.replaceFainted(battle.state);
 
-  runApp(MainApp(() => BattleScreen(battle, playerOne)));
+  runApp(MainApp(battle, playerOne));
 }
 
 class MainApp extends StatelessWidget {
-  final BattleScreen Function() builder;
-  MainApp(this.builder, {super.key});
+  late BattleScreen Function() builder;
+  final GlobalKey battleScreenKey = GlobalKey();
+  MainApp(Battle battle, BattlePlayer player, {super.key}) {
+    builder = () => BattleScreen(battle, player, key: battleScreenKey);
+    battle.onBattleEnd = (condition) async {
+      final context = battleScreenKey.currentContext!;
+      await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(title: Text('$condition')));
+      Navigator.of(context).popAndPushNamed('/end');
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: Scaffold(
-        body: builder(),
-      ),
+      routes: {
+        '/battle': (context) => Scaffold(body: builder()),
+        '/end': (context) => Scaffold(
+              appBar: AppBar(title: const Text("It's over!")),
+            ),
+      },
+      initialRoute: '/battle',
     );
   }
 }

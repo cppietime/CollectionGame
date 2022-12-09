@@ -86,6 +86,7 @@ class MoveEffect {
   static late final MoveEffect flinch;
 
   static late final MoveEffect critRatio;
+  static late final MoveEffect oneHp;
 
   static void initialize() {
     protect = MoveEffect("protect",
@@ -144,5 +145,8 @@ class MoveEffect {
     critRatio = MoveEffect("crit_ratio",
         critStageModifier: (state, user, target, extra, stage) =>
             stage + extra);
+    oneHp = MoveEffect("one_hp",
+        damageModifier: (state, user, target, extra, damage) =>
+            min(damage, target.individual.hp - 1));
   }
 }

@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:collectgame/battle/battle_action.dart';
 import 'package:collectgame/battle/effect_side.dart';
+import 'package:collectgame/data/ball/ball.dart';
 import 'package:collectgame/data/move/move_effect.dart';
 import 'package:collectgame/data/prng.dart';
 import 'package:flutter/foundation.dart';
@@ -33,6 +34,10 @@ class BattleState {
   List<Battler> speedSorted = [];
 
   LogFunction log;
+
+  Individual? captive;
+
+  bool _battleEnded = false;
 
   bool inflict(Battler target, Battler? source, Effect status) {
     if (status.onInflict == null) {
@@ -104,7 +109,7 @@ class BattleState {
         '$battler', "Missing Battler", "Provided battler is not in the battle");
   }
 
-  void doTurn() {
+  Future<void> doTurn() async {
     _sortBySpeed();
     for (final attacker in speedSorted) {
       final action = attacker.queuedAction!;
@@ -116,40 +121,45 @@ class BattleState {
           _doSwap(attacker);
           break;
         case BattleActionType.item:
-          _doUseItem(attacker);
+          await _doUseItem(attacker);
           break;
         default:
           break;
       }
       attacker.queuedAction = null;
+      if (_battleEnded) {
+        break;
+      }
     }
-    for (final attacker in speedSorted) {
-      if (attacker.individual.hp <= 0) {
-        continue;
-      }
-      final nonVolatile = attacker.individual.statusCondition;
-      if (nonVolatile != null) {
-        nonVolatile.endOfTurn
-            ?.call(this, attacker, BattleEffect(nonVolatile, 0));
-      }
-      if (attacker.individual.hp <= 0) {
-        continue;
-      }
-      Set<Effect> expired = {};
-      for (final effect in attacker.volatileStatus) {
-        effect.effect.endOfTurn?.call(this, attacker, effect);
-        if (effect.effect.persists?.call(this, attacker, effect) == false) {
-          expired.add(effect.effect);
+    if (!_battleEnded) {
+      for (final attacker in speedSorted) {
+        if (attacker.individual.hp <= 0) {
+          continue;
+        }
+        final nonVolatile = attacker.individual.statusCondition;
+        if (nonVolatile != null) {
+          nonVolatile.endOfTurn
+              ?.call(this, attacker, BattleEffect(nonVolatile, 0));
         }
         if (attacker.individual.hp <= 0) {
-          break;
+          continue;
         }
-      }
-      for (final effect in expired) {
-        attacker.removeEffect(effect);
+        Set<Effect> expired = {};
+        for (final effect in attacker.volatileStatus) {
+          effect.effect.endOfTurn?.call(this, attacker, effect);
+          if (effect.effect.persists?.call(this, attacker, effect) == false) {
+            expired.add(effect.effect);
+          }
+          if (attacker.individual.hp <= 0) {
+            break;
+          }
+        }
+        for (final effect in expired) {
+          attacker.removeEffect(effect);
+        }
+        _faintCheck();
       }
     }
-    _faintCheck();
   }
 
   void sendOut(Battler battler) {
@@ -343,6 +353,7 @@ class BattleState {
   }
 
   void _doDamage(Battler attacker, Battler defender, Move move, int damage) {
+    damage = min(damage, defender.individual.hp);
     if (damage > 0) {
       inflict(defender, attacker, Effect.tookDamageThisTurn);
     }
@@ -599,7 +610,7 @@ class BattleState {
     log('Sent out ${attacker.commander!.activeBattlers[attacker.indexOnSide]}');
   }
 
-  void _doUseItem(Battler attacker) {
+  Future<void> _doUseItem(Battler attacker) async {
     final param = attacker.queuedAction!.param as BattleActionItemParam;
     final item = param.item;
     final player = attacker.commander!;
@@ -611,14 +622,61 @@ class BattleState {
     bool success = false;
     if (target == null && item.onBattleUse != null) {
       // Use on the user battler
-      success = item.onBattleUse!.call(this, attacker, item.param);
+      success = await item.onBattleUse!.call(this, attacker, item.param);
     } else if (target != null && item.onBattlerUse != null) {
-      success = item.onBattlerUse!(this, target, player, item.param);
+      success = await item.onBattlerUse!(this, target, player, item.param);
     }
     if (success) {
       player.bag.take(item, 1);
     } else {
       log('${item.name} had no effect...');
+    }
+  }
+
+  Future<void> throwBall(Battler user, Battler target, Ball ball) async {
+    print('Using $ball on $target');
+    log('Throwing a $ball at $target');
+    bool success = ball.bypassCheck;
+    if (!success) {
+      final hp = target.individual.hp;
+      final maxHp = target.calcStat(Stat.hp);
+      final ballBonus = ball.catchModifier(this, target);
+      final catchRate = target.individual.species.catchRate;
+      int num = (3 * maxHp - 2 * hp) * 4096 * catchRate * ballBonus ~/ (3 * maxHp);
+      double alpha = num.toDouble();
+      switch (target.individual.statusCondition) {
+        case Effect.sleep:
+        case Effect.freeze:
+          alpha *= 2;
+          break;
+        case Effect.poison:
+        case Effect.burn:
+        case Effect.paralysis:
+          alpha *= 1.5;
+          break;
+        default:
+      }
+      final levelBonus = max(1, (30 - target.individual.level) / 10);
+      alpha *= levelBonus;
+      final beta = 65536 / pow(1044480 / alpha, 0.25);
+      print('alpha=$alpha, beta=$beta');
+      for (int i = 0; i < 4; i++) {
+        success = true;
+        final rand = PRNG.instance.upto(65536);
+        if (rand >= beta) {
+          success = false;
+          break;
+        }
+      }
+    }
+    if (success) {
+      captive = target.individual;
+      _battleEnded = true;
+      print('Captured!');
+      log('Caught $target!');
+    } else {
+      print('Failed');
+      log('It got away...');
     }
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:collectgame/data/ball/ball.dart';
 import 'package:flutter/services.dart';
 
 import '../registry.dart';
@@ -9,23 +10,27 @@ import 'bag.dart';
 
 import '../../battle/battle.dart';
 
-typedef UseInBattleCallback = bool Function(
+typedef UseInBattleCallback = Future<bool> Function(
     BattleState battleState, Battler user, int param);
-typedef UseOnBattlerCallback = bool Function(
+typedef UseOnBattlerCallback = Future<bool> Function(
     BattleState, Individual subject, BattlePlayer player, int param);
-typedef BattlePredicate = bool Function(
+typedef BattlePredicate = Future<bool> Function(
     BattleState battleState, Battler user, int param);
-typedef BattlerPredicate = bool Function(BattleState battleState,
+typedef BattlerPredicate = Future<bool> Function(BattleState battleState,
     Individual subject, BattlePlayer player, int param);
 
-final _battlePredicates = <String, BattlePredicate>{};
-final _battleCallbacks = <String, UseInBattleCallback>{};
+final _battlePredicates = <String, BattlePredicate>{
+  'ball': _ballBattlePredicate,
+};
+final _battleCallbacks = <String, UseInBattleCallback>{
+  'ball': _ballBattleCallback,
+};
 
 final _battlerPredicates = <String, BattlerPredicate>{
-  'heal': _healBattlerPredicate
+  'heal': _healBattlerPredicate,
 };
 final _battlerCallbacks = <String, UseOnBattlerCallback>{
-  'heal': _healBattlerCallback
+  'heal': _healBattlerCallback,
 };
 
 class Item {
@@ -98,17 +103,32 @@ class Item {
   }
 }
 
-bool _healBattlerPredicate(BattleState state, Individual subject, BattlePlayer player, int param) {
+Future<bool> _healBattlerPredicate(BattleState state, Individual subject, BattlePlayer player, int param) async {
   return subject.hp < subject.calcStat(Stat.hp);
 }
 
-bool _healBattlerCallback(
-    BattleState state, Individual subject, BattlePlayer player, int param) {
+Future<bool> _healBattlerCallback(
+    BattleState state, Individual subject, BattlePlayer player, int param) async {
   if (subject.hp == subject.calcStat(Stat.hp)) {
     return false;
   }
   subject.hp += param;
   subject.hp = min(subject.hp, subject.calcStat(Stat.hp));
   state.log('Healed $subject');
+  return true;
+}
+
+Future<bool> _ballBattlePredicate(BattleState state, Battler user, int param) async {
+  final targets = state.enemySide.values;
+  if (targets.length > 1) {
+    return false;
+  }
+  final target = targets.first;
+  return target.commander!.isWild;
+}
+
+Future<bool> _ballBattleCallback(BattleState state, Battler user, int param) async {
+  final target = state.enemySide.values.first;
+  await state.throwBall(user, target, Ball.values[param]);
   return true;
 }

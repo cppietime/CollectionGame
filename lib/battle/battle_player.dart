@@ -14,6 +14,7 @@ class BattlePlayer {
   final List<Individual> party = [];
   final Bag bag = Bag();
   bool isPlayer = false;
+  bool isWild = false;
   Future<int> Function(BattlePlayer)? selector;
 
   bool readyToAct() =>

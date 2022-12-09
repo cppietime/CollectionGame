@@ -193,22 +193,24 @@ class BattleScreen extends StatefulWidget {
 }
 
 class _BattleScreenState extends State<BattleScreen> {
+  @override
   void initState() {
+    super.initState();
     widget.player.selector = (x) async => await _playerSelector(x) ?? -1;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.battle.battleStillActive()) {
-      return const Text('Battle over!');
-    }
     print(widget.player.activeBattlers);
     final battler = widget.player.activeBattlers[widget.activeIndex]!;
     return Column(
       children: [
+        if(widget.battle.battleStillActive())
         BattlerView(widget.battle, playerSide: false),
+        if(widget.battle.battleStillActive())
         BattlerView(widget.battle, playerSide: true),
         BattleLogView(widget.messages),
+        if(widget.battle.battleStillActive())
         BattleMenu(
           battler,
           widget.battle,
@@ -238,7 +240,7 @@ class _BattleScreenState extends State<BattleScreen> {
   Future<void> _onItemChosen(Battler battler, Item item) async {
     print('$battler will use a ${item.name}');
     if (item.onBattleUse != null &&
-        item.battlePredicate?.call(widget.battle.state, battler, item.param) !=
+        await item.battlePredicate?.call(widget.battle.state, battler, item.param) !=
             false) {
       final param = BattleActionItemParam(item);
       final action = BattleAction(BattleActionType.item, param);
@@ -248,7 +250,7 @@ class _BattleScreenState extends State<BattleScreen> {
       final targetIndex = await showDialog(context: context, builder: (context) => PartySelector(widget.player, true, false));
       if (targetIndex != null && targetIndex < widget.player.party.length) {
         final target = widget.player.party[targetIndex];
-        if (item.battlerPredicate
+        if (await item.battlerPredicate
             ?.call(widget.battle.state, target, widget.player, item.param) !=
             false) {
           final param = BattleActionItemParam(item, target);
@@ -309,6 +311,13 @@ class _BattleScreenState extends State<BattleScreen> {
   }
 
   Future<int?> _playerSelector(BattlePlayer player) async {
+    final canSend = player.party.any((member) =>
+    member.hp > 0 &&
+        (!player.activeBattlers.values
+            .any((battler) => battler.individual == member)));
+    if (!canSend) {
+      return null;
+    }
     return await showDialog<int>(
       context: context,
       builder: (context) => PartySelector(widget.player, false, true),
